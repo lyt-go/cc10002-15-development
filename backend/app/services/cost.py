@@ -18,6 +18,9 @@ class CostService:
         *,
         keyword: str | None = None,
         status: str | None = None,
+        backfill_task_id: int | None = None,
+        target_table: str | None = None,
+        stat_month: str | None = None,
         page: int = 1,
         size: int = 20,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -26,6 +29,12 @@ class CostService:
             rows = [row for row in rows if keyword in str(row.get("账单编号", ""))]
         if status:
             rows = [row for row in rows if row.get("status") == status]
+        if backfill_task_id is not None:
+            rows = [row for row in rows if row.get("backfill_task_id") == backfill_task_id]
+        if target_table:
+            rows = [row for row in rows if target_table in str(row.get("数据表名", ""))]
+        if stat_month:
+            rows = [row for row in rows if str(row.get("统计月份", "")) == stat_month]
         total = len(rows)
         start = max(page - 1, 0) * size
         return rows[start:start + size], total

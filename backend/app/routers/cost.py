@@ -1,4 +1,8 @@
-"""存储成本接口：维护成本账单，覆盖生成账单、核对账单、归档账单等动作。"""
+"""存储成本接口：维护成本账单，覆盖生成账单、核对账单、归档账单等动作。
+
+补数批次产生的扫描账单也落在本模块，可按补数任务、目标表、统计月份过滤，
+并通过账单上的 backfill_task_id 回跳补数任务，形成「补数页 <-> 成本页」处置链路。
+"""
 from __future__ import annotations
 
 from typing import Any
@@ -20,14 +24,32 @@ STATUSES = ["草稿", "已生成", "已核对", "已归档"]
 def list_entries(
     keyword: str | None = Query(default=None, description="按账单编号检索"),
     status: str | None = Query(default=None, description="草稿、已生成、已核对、已归档"),
+    backfill_task_id: int | None = Query(default=None, description="按补数任务 id 过滤补数扫描账单"),
+    target_table: str | None = Query(default=None, description="按目标表名模糊过滤"),
+    stat_month: str | None = Query(default=None, description="按统计月份 YYYYMM 过滤"),
     page: int = 1,
     size: int = 20,
 ) -> PageResult[dict]:
-    """按账单编号与状态过滤存储成本列表；没有数据时返回空页，不报错。"""
+    """按账单编号、状态及补数任务等条件过滤存储成本列表；没有数据时返回空页，不报错。"""
     if size > 200:
         raise HTTPException(status_code=400, detail="每页最多 200 条，请缩小分页范围")
-    items, total = service.list_entries(keyword=keyword, status=status, page=page, size=size)
+    items, total = service.list_entries(
+        keyword=keyword,
+        status=status,
+        backfill_task_id=backfill_task_id,
+        target_table=target_table,
+        stat_month=stat_month,
+        page=page,
+        size=size,
+    )
     return PageResult(items=items, total=total, page=page, size=size)
+
+
+@router.get("/export")
+def export_entries() -> dict[str, Any]:
+    """导出存储成本清单：返回当前过滤条件下的全量数据。"""
+    items, total = service.list_entries(page=1, size=10000)
+    return {"module": "cost", "total": total, "items": items}
 
 
 @router.get("/{entry_id}", response_model=dict)
@@ -56,10 +78,3 @@ def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
-
-
-@router.get("/export")
-def export_entries() -> dict[str, Any]:
-    """导出存储成本清单：返回当前过滤条件下的全量数据。"""
-    items, total = service.list_entries(page=1, size=10000)
-    return {"module": "cost", "total": total, "items": items}
